@@ -442,42 +442,44 @@ can consume GPU memory that SLURM thinks is free — coordinate with other users
 or use `hold.sh`-style reservation scripts to claim GPUs first.
 
 
-## Comparison with Official AF3 Usage
+## Comparison with Official AF3 Codebase
 
 The official [AlphaFold 3 codebase](https://github.com/google-deepmind/alphafold3)
-is designed for **one-shot batch runs** via `run_alphafold.py`:
+provides both a CLI (`run_alphafold.py`) and a Python library. You can import
+and use the core functions directly:
 
-```bash
-python run_alphafold.py \
-    --json_path=input.json \
-    --model_dir=/data/af3 \
-    --output_dir=/data/output \
-    --num_diffusion_samples=5
+```python
+from alphafold3.common import folding_input
+from alphafold3.data import featurisation, pipeline
+from alphafold3.model import params, post_processing
+
+fi = folding_input.Input(name="my_job", chains=[...], rng_seeds=[0])
+results = predict_structure(fi, model_runner, buckets=BUCKETS)
 ```
 
-Each invocation reloads model weights (~30s) and JIT-compiles for the input
-size. For a single prediction this is fine, but for batch workflows (folding
-100+ designed proteins) the overhead dominates.
+The library approach works well for scripts that fold many inputs in one
+process — you create a `ModelRunner` once and reuse it. The CLI
+(`run_alphafold.py`) is a thin wrapper around these same functions.
 
-**This server** loads the model once and keeps it warm. The JAX compilation
-cache (`AF3_CACHE_DIR`) persists across restarts, so even the first prediction
-for a given token bucket is only slow once.
+**Why this server?** The AF3 library runs inside a Docker/Apptainer container
+with specific JAX/CUDA dependencies. If your main code lives outside that
+container (e.g. a PyTorch training loop), you can't `import alphafold3`
+directly. The server bridges this gap: AF3 runs in its container, your code
+talks to it over HTTP.
 
-| | Official `run_alphafold.py` | This server |
+| | Official AF3 (library or CLI) | This server |
 |---|---|---|
-| **Interface** | CLI, one JSON file per run | REST API + Python client |
-| **Model loading** | Every invocation (~30s) | Once at startup |
-| **JIT compilation** | Every invocation (unless cached) | Once per token bucket, cached |
-| **Batch processing** | `--input_dir` for multiple JSONs | `client.fold_batch()`, async queue |
-| **Input format** | AF3 JSON file on disk | Simple sequences or AF3 JSON over HTTP |
-| **Programmatic access** | Shell scripts / subprocess | `from af3_server import AF3Client` |
-| **Config** | CLI flags | Environment variables |
-| **Container** | Docker (needs root) | Apptainer (rootless, SLURM-friendly) |
+| **Use from Python** | `import alphafold3` (must be in AF3 environment) | `from af3_server import AF3Client` (any Python env) |
+| **Model loading** | Once per process (you manage the `ModelRunner`) | Once at startup (server manages it) |
+| **Cross-environment** | Must share AF3's JAX/CUDA env | Client is pure `requests`, works anywhere |
+| **Batch processing** | `--input_dir` or loop in your script | `client.fold_batch()`, async job queue |
+| **Container** | Docker (needs root) or manual install | Apptainer (rootless, SLURM-friendly) |
+| **Input format** | `folding_input.Input` objects or JSON files | Simple sequences or AF3 JSON over HTTP |
 
 Both use the same model, same inference code, same defaults (`5` diffusion
-samples, `10` recycles, `triton` flash attention). The server is a thin
-wrapper — it calls the same `featurisation`, `ModelRunner`, and
-`post_processing` functions as `run_alphafold.py`.
+samples, `10` recycles, `triton` flash attention). The server calls the same
+`featurisation`, `ModelRunner`, and `post_processing` functions as
+`run_alphafold.py`.
 
 
 ## Limitations & Future Work
