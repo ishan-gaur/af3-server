@@ -7,18 +7,18 @@ SLURM GPU nodes.
 ## Architecture
 
 ```
-┌─────────────────────┐         ┌─────────────────────────────────────┐
-│   Python client     │  HTTP   │  Apptainer container (GPU node)     │
-│   (your script)     │────────►│  ┌─────────────────────────────────┐│
-│                     │         │  │ FastAPI server (server.py)      ││
-│  client.fold(seq)   │◄────────│  │  └─ ModelRunner (JAX, loaded   ││
-│  client.fold_batch  │         │  │     once at startup)            ││
-└─────────────────────┘         │  │  └─ InferenceWorker (job queue) ││
-                                │  └─────────────────────────────────┘│
-                                │  Mounts:                            │
-                                │    /app/models ← model weights      │
-                                │    /public_databases ← genetic DBs  │
-                                └─────────────────────────────────────┘
+┌─────────────────────┐         ┌───────────────────────────────────────┐
+│   Python client     │  HTTP   │  Apptainer container (GPU node)       │
+│   (your script)     │────────►│  ┌─────────────────────────────────┐  │
+│                     │         │  │ FastAPI server (server.py)      │  │
+│  client.fold(seq)   │◄────────│  │  └─ ModelRunner (JAX, loaded    │  │
+│  client.fold_batch  │         │  │     once at startup)            │  │
+└─────────────────────┘         │  │  └─ InferenceWorker (job queue) │  │
+                                │  └─────────────────────────────────┘  │
+                                │  Mounts:                              │
+                                │    /app/models ← model weights        │
+                                │    /public_databases ← genetic DBs    │
+                                └───────────────────────────────────────┘
 ```
 
 **Why a server?** Each AF3 Docker/Apptainer invocation reloads model weights
@@ -54,7 +54,7 @@ mkdir -p /data/af3
 ls /data/af3/af3.bin
 ```
 
-### Step 3: Obtain Genetic Databases (Optional)
+### Step 3: Obtain Sequence Databases (Optional)
 
 Only needed if you want to run MSA search (`AF3_RUN_DATA_PIPELINE=true`).
 For folding designed proteins, you typically don't need this.
