@@ -418,3 +418,13 @@ The server uses one GPU exclusively. On a shared cluster, use SLURM to allocate
 GPUs properly. If other users run Docker containers outside SLURM, their jobs
 can consume GPU memory that SLURM thinks is free — coordinate with other users
 or use `hold.sh`-style reservation scripts to claim GPUs first.
+
+
+## Limitations & Future Work
+
+- **Single GPU only** — the server binds to one GPU and processes jobs sequentially.
+  For higher throughput, run multiple server instances on different ports/GPUs and
+  round-robin across them from the client side.
+- **Simple API is protein-only** — the `sequences` field in `POST /fold` only
+  supports protein chains. For ligands, DNA, RNA, or modified residues, use the
+  `af3_json` field with the full [AF3 input format](https://github.com/google-deepmind/alphafold3/blob/main/docs/input.md).
