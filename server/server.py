@@ -65,8 +65,6 @@ class FoldRequest(pydantic.BaseModel):
     name: str = "fold_job"
     sequences: list[str] | None = None
     seeds: list[int] = [0]
-    num_diffusion_samples: int = 5
-    num_recycles: int = 10
     af3_json: dict | None = None
 
     @pydantic.model_validator(mode="after")
@@ -421,7 +419,14 @@ def startup():
     print(f"GPU devices: {devices}", flush=True)
     assert len(devices) > 0, "No GPU devices found"
 
-    config = make_model_config()
+    num_diffusion_samples = int(os.environ.get("AF3_NUM_DIFFUSION_SAMPLES", "5"))
+    num_recycles = int(os.environ.get("AF3_NUM_RECYCLES", "10"))
+    config = make_model_config(
+        num_diffusion_samples=num_diffusion_samples,
+        num_recycles=num_recycles,
+    )
+    print(f"Diffusion samples: {num_diffusion_samples}", flush=True)
+    print(f"Recycles: {num_recycles}", flush=True)
     model_runner = ModelRunner(
         config=config, device=devices[0], model_dir=model_dir
     )

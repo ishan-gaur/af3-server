@@ -14,6 +14,8 @@
 #   AF3_RUN_DATA_PIPELINE — "true" to run MSA search (default: "false")
 #   AF3_GPU            — which GPU index to use (default: 0)
 #   AF3_CACHE_DIR      — JAX compilation cache dir (default: /data/af3_jax_cache)
+#   AF3_NUM_DIFFUSION_SAMPLES — diffusion samples per seed (default: 5)
+#   AF3_NUM_RECYCLES   — number of recycling iterations (default: 10)
 
 #SBATCH --job-name=af3-server
 #SBATCH --output=%x.%j.out
@@ -35,6 +37,8 @@ AF3_SIF="${AF3_SIF:-/data/apptainer_images/alphafold3_server.sif}"
 AF3_RUN_DATA_PIPELINE="${AF3_RUN_DATA_PIPELINE:-false}"
 AF3_GPU="${AF3_GPU:-0}"
 AF3_CACHE_DIR="${AF3_CACHE_DIR:-/data/af3_jax_cache}"
+AF3_NUM_DIFFUSION_SAMPLES="${AF3_NUM_DIFFUSION_SAMPLES:-5}"
+AF3_NUM_RECYCLES="${AF3_NUM_RECYCLES:-10}"
 
 # ── Apptainer setup ──────────────────────────────────────────────────────
 export PATH="$HOME/bin:$PATH"
@@ -55,6 +59,8 @@ echo "Port:           $AF3_PORT"
 echo "GPU:            $AF3_GPU"
 echo "Data pipeline:  $AF3_RUN_DATA_PIPELINE"
 echo "JAX cache:      $AF3_CACHE_DIR"
+echo "Diff. samples:  $AF3_NUM_DIFFUSION_SAMPLES"
+echo "Recycles:       $AF3_NUM_RECYCLES"
 echo "================================================================"
 
 mkdir -p "$AF3_OUTPUT_DIR" "$AF3_CACHE_DIR"
@@ -85,6 +91,8 @@ apptainer exec \
     --env TF_FORCE_UNIFIED_MEMORY=true \
     --env XLA_CLIENT_MEM_FRACTION=3.2 \
     --env JAX_COMPILATION_CACHE_DIR=/app/jax_cache \
+    --env AF3_NUM_DIFFUSION_SAMPLES="$AF3_NUM_DIFFUSION_SAMPLES" \
+    --env AF3_NUM_RECYCLES="$AF3_NUM_RECYCLES" \
     --pwd /app/alphafold \
     "$AF3_SIF" \
     python3 /app/server/server.py

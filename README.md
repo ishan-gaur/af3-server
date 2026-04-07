@@ -328,6 +328,28 @@ All via environment variables (set in `launch.sh` or override on command line):
 | `AF3_RUN_DATA_PIPELINE` | `false` | Run MSA search (needs databases + time) |
 | `AF3_GPU` | `0` | GPU index |
 | `AF3_CACHE_DIR` | `/data/af3_jax_cache` | JAX compilation cache |
+| `AF3_NUM_DIFFUSION_SAMPLES` | `5` | Diffusion samples per seed (more = better best-of-N, slower) |
+| `AF3_NUM_RECYCLES` | `10` | Recycling iterations (more = better accuracy, slower) |
+
+### What's configurable vs fixed
+
+**Per-request** (set by the client for each job):
+- `name` — job name
+- `sequences` — protein sequences (simple mode)
+- `seeds` — random seeds; each seed generates `NUM_DIFFUSION_SAMPLES` structure samples
+- `af3_json` — full AF3 input JSON (advanced mode: ligands, DNA, RNA, modified residues, custom MSAs)
+
+**Per-server** (set once at launch via env vars, applies to all jobs):
+- `AF3_NUM_DIFFUSION_SAMPLES` — number of diffusion samples per seed
+- `AF3_NUM_RECYCLES` — number of recycling iterations
+- Flash attention implementation (`triton`, hardcoded — requires Ampere+ GPUs)
+- Token bucket sizes (hardcoded: 256 to 5120)
+
+**Not exposed** (hardcoded off):
+- `return_embeddings` — intermediate embeddings not returned
+- `return_distogram` — distogram head not returned
+
+These match the defaults from the official AF3 codebase (see below).
 
 
 ## File Layout
@@ -418,6 +440,44 @@ The server uses one GPU exclusively. On a shared cluster, use SLURM to allocate
 GPUs properly. If other users run Docker containers outside SLURM, their jobs
 can consume GPU memory that SLURM thinks is free — coordinate with other users
 or use `hold.sh`-style reservation scripts to claim GPUs first.
+
+
+## Comparison with Official AF3 Usage
+
+The official [AlphaFold 3 codebase](https://github.com/google-deepmind/alphafold3)
+is designed for **one-shot batch runs** via `run_alphafold.py`:
+
+```bash
+python run_alphafold.py \
+    --json_path=input.json \
+    --model_dir=/data/af3 \
+    --output_dir=/data/output \
+    --num_diffusion_samples=5
+```
+
+Each invocation reloads model weights (~30s) and JIT-compiles for the input
+size. For a single prediction this is fine, but for batch workflows (folding
+100+ designed proteins) the overhead dominates.
+
+**This server** loads the model once and keeps it warm. The JAX compilation
+cache (`AF3_CACHE_DIR`) persists across restarts, so even the first prediction
+for a given token bucket is only slow once.
+
+| | Official `run_alphafold.py` | This server |
+|---|---|---|
+| **Interface** | CLI, one JSON file per run | REST API + Python client |
+| **Model loading** | Every invocation (~30s) | Once at startup |
+| **JIT compilation** | Every invocation (unless cached) | Once per token bucket, cached |
+| **Batch processing** | `--input_dir` for multiple JSONs | `client.fold_batch()`, async queue |
+| **Input format** | AF3 JSON file on disk | Simple sequences or AF3 JSON over HTTP |
+| **Programmatic access** | Shell scripts / subprocess | `from af3_server import AF3Client` |
+| **Config** | CLI flags | Environment variables |
+| **Container** | Docker (needs root) | Apptainer (rootless, SLURM-friendly) |
+
+Both use the same model, same inference code, same defaults (`5` diffusion
+samples, `10` recycles, `triton` flash attention). The server is a thin
+wrapper — it calls the same `featurisation`, `ModelRunner`, and
+`post_processing` functions as `run_alphafold.py`.
 
 
 ## Limitations & Future Work
